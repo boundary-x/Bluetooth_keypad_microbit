@@ -94,3 +94,12 @@ All rights to the source code and design of this project belong to **Boundary X*
 
 * **Web:** [boundaryx.io](https://boundaryx.io)
 * **Contact:** [https://boundaryx.io/contact](https://boundaryx.io/contact)
+
+
+## In-app Guide and Support
+
+Open **도움말** in the header or expand **사용 가이드 및 지원** for a six-step screen guide, micro:bit name-check and project code links, troubleshooting and update notes. Links come from the [introduction](https://boundaryx.io/ai/?bmode=view&idx=169833636&t=board).
+
+The keypad sends strings `1` through `12`, followed by a newline, once per press. Holding does not repeat; releasing or disconnecting does not send `stop`. Define a stop action in your micro:bit program if needed. **Sent Data** shows the selected number, not a device receipt confirmation.
+
+Node.js is not required to use the deployed app. Developers can run `node tests/support.cjs` with Node.js, Playwright and Microsoft Edge to verify seven screen sizes and guide interactions. Hardware Bluetooth testing remains separate.
