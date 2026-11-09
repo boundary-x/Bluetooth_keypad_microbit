@@ -11,7 +11,7 @@
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
   <link rel="stylesheet" type="text/css" href="style.css">
   <link rel="stylesheet" href="support.css?v=device-cards-20261102">
-</head>
+<link rel="stylesheet" href="board.css?v=esp32-20261109"></head>
 <body>
   <header>
     <div class="title">
@@ -25,11 +25,12 @@
   <main>
     <div id="p5-container" class="canvas-container"></div>
     
+    <div class="board-toolbar"><div class="board-picker"><span class="board-logos" aria-hidden="true"><img data-logo="microbit" class="is-active" src="assets/microbit.svg?v=black" alt=""><img data-logo="esp32" src="assets/espressif.svg" alt=""></span><select id="board-select" aria-label="연결할 보드"><option value="microbit">micro:bit</option><option value="esp32">ESP32</option></select></div><span id="board-feedback" class="visually-hidden" role="status"></span></div>
     <section class="controls">
       
       <div class="control-group" id="bluetooth-control-group">
         <h3>1. 기기 연결</h3>
-        <p>마이크로비트와 블루투스로 연결하여 통신을 시작합니다.</p>
+        <p id="connection-description">마이크로비트와 블루투스로 연결하여 통신을 시작합니다.</p>
         <div id="bluetoothStatus">상태: 연결 대기 중</div>
         <div id="bluetooth-control-buttons" class="button-group" style="margin-top: 1.5rem;"></div><div class="support-inline"><button type="button" data-help="help-connection">연결이 안 되나요?</button></div>
       </div>
@@ -95,9 +96,10 @@
     </div>
   </footer>
 
-  <script src="sketch.js" defer></script>
-  <script src="support.js?v=keypad-examples-20261102" defer></script>
-</body>
+  <script src="sketch.js?v=esp32-20261109" defer></script>
+  <script src="support.js?v=esp32-20261109" defer></script>
+<script src="board.js?v=esp32-20261109" defer></script></body>
 </html>
+
 
 

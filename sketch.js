@@ -54,14 +54,14 @@ function createKeypadUI() {
 }
 
 // 키패드 입력 처리
-function handleKeypadInput(number) {
+async function handleKeypadInput(number) {
     if (!isConnected) {
-        alert("먼저 마이크로비트와 연결해주세요.");
+        alert(`먼저 ${BOARD_PROFILES[selectedBoard].label}와 연결해주세요.`);
         return;
     }
 
     const dataToSend = String(number);
-    sendBluetoothData(dataToSend);
+    if (!await sendBluetoothData(dataToSend)) return;
     
     // UI 업데이트 (확인 창)
     const display = select("#sentDataDisplay");
@@ -89,51 +89,90 @@ function updateBluetoothStatusUI(type) {
   }
 }
 
+
+const BOARD_PROFILES = {
+ microbit: {label:"마이크로비트", filters:[{namePrefix:"BBC micro:bit"}], write:UART_RX_CHARACTERISTIC_UUID},
+ esp32: {label:"ESP32", filters:[{namePrefix:"ESP"},{namePrefix:"MPY"}], write:UART_TX_CHARACTERISTIC_UUID}
+};
+let selectedBoard="microbit", connecting=false, connectionGeneration=0, writeQueue=Promise.resolve();
+function connectionControls() {
+ document.getElementById("board-select").disabled=connecting;
+ const connect=document.querySelector("#bluetooth-control-buttons .start-button");
+ if(connect) connect.disabled=connecting||isConnected;
+ const disconnect=document.querySelector("#bluetooth-control-buttons .stop-button");
+ if(disconnect) disconnect.disabled=connecting||!isConnected;
+}
+function clearConnection(message) {
+ connectionGeneration++;
+ isConnected=false; rxCharacteristic=null; bluetoothDevice=null;
+ bluetoothStatus=message; updateBluetoothStatusUI("default");
+ document.getElementById("sentDataDisplay").textContent="-";
+ connectionControls();
+}
 async function connectBluetooth() {
-  try {
-    bluetoothDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: "BBC micro:bit" }],
-      optionalServices: [UART_SERVICE_UUID],
-    });
-    const server = await bluetoothDevice.gatt.connect();
-    const service = await server.getPrimaryService(UART_SERVICE_UUID);
-    rxCharacteristic = await service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID);
-    isConnected = true;
-    
-    // Connected (Green)
-    bluetoothStatus = `${bluetoothDevice.name} 연결됨`;
-    updateBluetoothStatusUI('connected');
-    
-  } catch (error) {
-    console.error("Connection failed", error);
-    // Error (Red)
-    bluetoothStatus = "연결 실패 (다시 시도해주세요)";
-    updateBluetoothStatusUI('error');
-  }
+ if(connecting||isConnected) return;
+ if(!navigator.bluetooth) {
+  bluetoothStatus="이 브라우저에서는 블루투스를 사용할 수 없습니다. PC·안드로이드는 Chrome, 아이폰은 Bluefy를 사용해주세요.";
+  updateBluetoothStatusUI("error");return;
+ }
+ connecting=true; connectionControls();
+ const profile=BOARD_PROFILES[selectedBoard], generation=++connectionGeneration;
+ let device;
+ try {
+  bluetoothStatus="연결할 기기를 선택해주세요."; updateBluetoothStatusUI("default");
+  device=await navigator.bluetooth.requestDevice({filters:profile.filters,optionalServices:[UART_SERVICE_UUID]});
+  bluetoothDevice=device;
+  device.addEventListener("gattserverdisconnected",()=>{
+   if(bluetoothDevice===device) clearConnection("연결이 끊겼습니다. 다시 연결해주세요.");
+  });
+  const server=await device.gatt.connect();
+  const service=await server.getPrimaryService(UART_SERVICE_UUID);
+  const characteristic=await service.getCharacteristic(profile.write);
+  if(generation!==connectionGeneration) {device.gatt.disconnect();return;}
+  rxCharacteristic=characteristic;isConnected=true;
+  bluetoothStatus=(device.name||profile.label)+" 연결됨";updateBluetoothStatusUI("connected");
+ } catch(error) {
+  if(device?.gatt.connected) device.gatt.disconnect();
+  clearConnection(error.name==="NotFoundError"?"기기 선택을 취소했습니다.":"연결 실패: 기기 전원과 블루투스 수신 코드를 확인해주세요.");
+  if(error.name!=="NotFoundError") updateBluetoothStatusUI("error");
+ } finally {connecting=false;connectionControls();}
 }
-
 function disconnectBluetooth() {
-  if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-    bluetoothDevice.gatt.disconnect();
+ const old=bluetoothDevice;
+ clearConnection("연결 해제됨");
+ if(old?.gatt.connected) old.gatt.disconnect();
+}
+function selectBoard(board) {
+ if(connecting||board===selectedBoard||!BOARD_PROFILES[board]) return;
+ if(isConnected&&!confirm("기기 동작을 멈췄나요? 보드를 바꾸면 현재 블루투스 연결이 해제됩니다.")) return;
+ disconnectBluetooth();
+ selectedBoard=board;
+ bluetoothStatus="연결 대기 중";updateBluetoothStatusUI("default");
+ document.getElementById("board-select").value=board;
+ document.getElementById("connection-description").textContent=board==="microbit"
+ ? "마이크로비트와 블루투스로 연결하여 통신을 시작합니다."
+ : "ESP32 수신 코드를 실행한 뒤 ESP 또는 MPY로 시작하는 기기를 선택해주세요.";
+ window.dispatchEvent(new CustomEvent("boardchange",{detail:{board}}));
+}
+function sendBluetoothData(data) {
+ const characteristic=rxCharacteristic, generation=connectionGeneration;
+ const task=writeQueue.then(async()=>{
+  if(!isConnected||generation!==connectionGeneration||characteristic!==rxCharacteristic) return false;
+  try {
+   const bytes=new TextEncoder().encode(data+"\n");
+   if(characteristic.properties.write&&characteristic.writeValueWithResponse) await characteristic.writeValueWithResponse(bytes);
+   else if(characteristic.properties.writeWithoutResponse&&characteristic.writeValueWithoutResponse) await characteristic.writeValueWithoutResponse(bytes);
+   else await characteristic.writeValue(bytes);
+   return isConnected&&generation===connectionGeneration;
+  } catch(error) {
+   if(generation===connectionGeneration) {
+    bluetoothStatus="전송 실패: 연결 상태를 확인해주세요.";updateBluetoothStatusUI("error");
+   }
+   return false;
   }
-  isConnected = false;
-  bluetoothDevice = null;
-  rxCharacteristic = null;
-  
-  // Default (Grey)
-  bluetoothStatus = "연결 해제됨";
-  updateBluetoothStatusUI('default');
+ });
+ writeQueue=task.catch(()=>false);
+ return task;
 }
 
-async function sendBluetoothData(data) {
-  if (!rxCharacteristic || !isConnected) return;
-  try {
-    const encoder = new TextEncoder();
-    // 마이크로비트는 줄바꿈(\n)이나 구분자가 있어야 데이터를 끊어서 인식하는 경우가 많으므로 \n 추가
-    await rxCharacteristic.writeValue(encoder.encode(`${data}\n`));
-    console.log("Sent:", data);
-  } catch (e) {
-    console.error("Send error:", e);
-    alert("데이터 전송 중 오류가 발생했습니다.");
-  }
-}
+
